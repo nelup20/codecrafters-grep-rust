@@ -11,17 +11,21 @@ const ASCII_LOWERCASE_Z: u8 = 122;
 
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
     match pattern {
-        "\\d" => {
-            input_line.chars()
-                .find(|&char| char_is_digit(char))
-                .is_some()
-        },
-        
-        "\\w" => {
-            input_line.chars()
-                .find(|&char| char_is_digit(char) || char_is_letter(char))
-                .is_some()
-        }
+        "\\d" => input_line
+            .chars()
+            .find(|&char| char_is_digit(char))
+            .is_some(),
+
+        "\\w" => input_line
+            .chars()
+            .find(|&char| char_is_digit(char) || char_is_letter(char))
+            .is_some(),
+
+        positive_group if positive_group.starts_with("[") => positive_group
+            [1..positive_group.len()]
+            .chars()
+            .any(|char| input_line.contains(char)),
+
         char => input_line.contains(char),
     }
 }
