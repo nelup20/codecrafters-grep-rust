@@ -8,170 +8,117 @@ const ASCII_LOWERCASE_A: u8 = 97;
 const ASCII_LOWERCASE_Z: u8 = 122;
 
 pub fn match_pattern(input_line: &str, pattern: &str) -> bool {
-    let pattern_indexes = get_pattern_start_indexes(input_line, pattern);
-    
+    let pattern_indexes = get_pattern_start_indexes(input_line, pattern).unwrap_or_else(Vec::new);
+
     for index in pattern_indexes {
-        if pattern_matches_for_substring(&input_line[index..], pattern) {
-            return true;
+        match pattern_matches_for_substring(&input_line[index..], pattern) {
+            None | Some(false) => continue,
+            Some(true) => return true,
         }
     }
-    
+
     false
 }
 
-// TODO: refactor this monstrosity
-fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> bool {
+fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool> {
     let mut input_chars = sub_input.chars();
     let mut pattern_chars = pattern.chars();
 
     while let Some(pattern_char) = pattern_chars.next() {
         match pattern_char {
-            '\\' => match pattern_chars.next() {
-                None => {}
-                Some(char) => match char {
-                    'd' => {
-                        match input_chars.next() {
-                            None => return false,
-                            Some(input_char) => {
-                                if !is_char_digit(input_char) {
-                                    return false;
-                                }
-                            }
-                        }
-                    }
+            '^' => continue,
 
-                    'w' => {
-                        match input_chars.next() {
-                            None => return false,
-                            Some(input_char) => {
-                                if !is_char_alphanumeric(input_char) {
-                                    return false;
-                                }
-                            }
-                        }
+            '\\' => match pattern_chars.next()? {
+                'd' => {
+                    if !is_char_digit(input_chars.next()?) {
+                        return Some(false);
                     }
-                    _ => {}
-                },
+                }
+
+                'w' => {
+                    if !is_char_alphanumeric(input_chars.next()?) {
+                        return Some(false);
+                    }
+                }
+
+                _ => return Some(false),
             },
 
-            '[' => match pattern_chars.next() {
-                None => return false,
-                Some(char) => match char {
-                    '^' => {
-                        let mut group_chars: Vec<char> = Vec::new();
-                        
-                        while let Some(group_char) = pattern_chars.next() {
-                            match group_char { 
-                                ']' => break,
-                                _ => group_chars.push(group_char)
-                            }
-                        }
-                        
-                        match input_chars.next() {
-                            None => return false,
-                            Some(input_char) => {
-                                if group_chars.contains(&input_char) {
-                                    return false;
-                                }
-                            }
-                        }
-                    },
+            '[' => {
+                let mut group_chars: Vec<char> = Vec::new();
 
-                    group_char => {
-                        let mut group_chars: Vec<char> = Vec::new();
-                        group_chars.push(group_char);
-
-                        while let Some(group_char) = pattern_chars.next() {
-                            match group_char {
-                                ']' => break,
-                                _ => group_chars.push(group_char)
-                            }
-                        }
-
-                        match input_chars.next() {
-                            None => return false,
-                            Some(input_char) => {
-                                if !group_chars.contains(&input_char) {
-                                    return false;
-                                }
-                            }
-                        }
+                while let Some(group_char) = pattern_chars.next() {
+                    match group_char {
+                        ']' => break,
+                        _ => group_chars.push(group_char),
                     }
-                },
-            },
+                }
+
+                if group_chars.first()? == &'^' {
+                    group_chars.remove(0);
+
+                    if group_chars.contains(&input_chars.next()?) {
+                        return Some(false);
+                    }
+                } else {
+                    if !group_chars.contains(&input_chars.next()?) {
+                        return Some(false);
+                    }
+                }
+            }
 
             literal_char => {
-                match input_chars.next() {
-                    None => return false,
-                    Some(input_char) => {
-                        if input_char != literal_char {
-                            return false;
-                        }
-                    }
+                if input_chars.next()? != literal_char {
+                    return Some(false);
                 }
             }
         }
     }
-    
-    true
+
+    Some(true)
 }
 
-fn get_pattern_start_indexes(input: &str, pattern: &str) -> Vec<usize> {
+fn get_pattern_start_indexes(input: &str, pattern: &str) -> Option<Vec<usize>> {
     let input_chars = input.chars();
     let mut pattern_chars = pattern.chars();
     let mut result: Vec<usize> = Vec::new();
 
-    match pattern_chars.next() {
-        None => {}
-        Some(pattern_char) => match pattern_char {
-            '\\' => match pattern_chars.next() {
-                None => {}
-                Some(char) => match char {
-                    'd' => {
-                        result = get_indexes_by_filter(input_chars, |input_char| {
-                            is_char_digit(input_char)
-                        });
-                    }
+    match pattern_chars.next()? {
+        '^' => {
+            result.push(0);
+        }
 
-                    'w' => {
-                        result = get_indexes_by_filter(input_chars, |input_char| {
-                            is_char_alphanumeric(input_char)
-                        })
-                    }
-                    _ => {}
-                },
-            },
+        '\\' => match pattern_chars.next()? {
+            'd' => {
+                result = get_indexes_by_filter(input_chars, |input_char| is_char_digit(input_char));
+            }
 
-            '[' => match pattern_chars.next() {
-                None => {}
-                Some(char) => match char {
-                    '^' => match pattern_chars.next() {
-                        None => {}
-                        // TODO: need to check entire group
-                        Some(group_char) => {
-                            result = get_indexes_by_filter(input_chars, |input_char| {
-                                input_char != group_char
-                            })
-                        }
-                    },
-
-                    group_char => {
-                        result = get_indexes_by_filter(input_chars, |input_char| {
-                            input_char == group_char
-                        })
-                    }
-                },
-            },
-
-            literal_char => {
+            'w' => {
                 result = get_indexes_by_filter(input_chars, |input_char| {
-                    input_char == literal_char
+                    is_char_alphanumeric(input_char)
                 })
             }
+            _ => {}
         },
+
+        // TODO: need to check for all group chars
+        '[' => match pattern_chars.next()? {
+            '^' => {
+                let group_char = pattern_chars.next()?;
+                result = get_indexes_by_filter(input_chars, |input_char| input_char != group_char)
+            }
+
+            group_char => {
+                result = get_indexes_by_filter(input_chars, |input_char| input_char == group_char)
+            }
+        },
+
+        literal_char => {
+            result = get_indexes_by_filter(input_chars, |input_char| input_char == literal_char)
+        }
     }
 
-    result
+    Some(result)
 }
 
 fn get_indexes_by_filter<F: FnMut(char) -> bool>(input_chars: Chars, mut filter: F) -> Vec<usize> {
