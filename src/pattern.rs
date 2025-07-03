@@ -29,8 +29,15 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
 
     while let Some(pattern_char) = pattern_chars.next() {
         match pattern_char {
+            // "^" is handled by setting index to 0, "?" is handled by the literal char case.
+            // No need to save prev pattern char either.
             '^' | '?' => continue,
 
+            '.' => {
+                input_chars.next();
+            }
+
+            // If there are still input chars left, it's not the end of the string
             '$' => {
                 if input_chars.next().is_some() {
                     return Some(false);
@@ -38,11 +45,21 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
             }
 
             '+' => {
+                // Loop until we find an input char that doesn't match the "+" quantifier's char
                 while let Some(input_char) = input_chars.next() {
                     if input_char != prev_pattern_char {
+                        // Loop until we find the next pattern that's different from the quantifier's char
+                        // Necessary for patterns like "abc+cccd" where there's the same char
+                        // before and after the "+"
                         while let Some(next_pattern_char) = pattern_chars.next() {
                             if next_pattern_char == prev_pattern_char {
                                 continue;
+                            }
+
+                            // With ".+" any char fits until the next literal
+                            if prev_pattern_char == '.' {
+                                while input_chars.next()? != next_pattern_char {}
+                                break;
                             }
 
                             if input_char != next_pattern_char {
@@ -97,6 +114,9 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
             }
 
             literal_char => {
+                // Save the last input char in case where the pattern is longer than the input,
+                // but it ends with an optional char ("?").
+                // ex: input = dog; pattern = dogs?
                 match pattern_chars.peek() {
                     Some('?') => {
                         if input_chars.peek().is_some() {
@@ -215,12 +235,12 @@ mod tests {
     }
 
     #[test]
-    fn one_or_more_quantifier_1() {
+    fn one_or_more_quantifier_matches_1() {
         assert!(match_pattern("cat", "ca+t"))
     }
 
     #[test]
-    fn one_or_more_quantifier_2() {
+    fn one_or_more_quantifier_matches_2() {
         assert!(match_pattern("caaats", "ca+at"))
     }
 
@@ -243,5 +263,20 @@ mod tests {
     #[test]
     fn zero_or_one_quantifier_doesnt_match() {
         assert!(!match_pattern("cat", "dogs?"));
+    }
+
+    #[test]
+    fn wildcard_matches_1() {
+        assert!(match_pattern("cat", "c.t"));
+    }
+
+    #[test]
+    fn wildcard_matches_2() {
+        assert!(match_pattern("goøö0Ogol", "g.+gol"));
+    }
+
+    #[test]
+    fn wildcard_doesnt_match_1() {
+        assert!(!match_pattern("cog", "d.g"));
     }
 }
