@@ -1,9 +1,9 @@
-mod pattern;
+mod regex;
 
+use crate::regex::regex::Regex;
 use std::env;
 use std::io;
 use std::process;
-use crate::pattern::match_pattern;
 
 fn main() {
     if env::args().nth(1).unwrap() != "-E" {
@@ -16,7 +16,8 @@ fn main() {
 
     io::stdin().read_line(&mut input_line).unwrap();
 
-    if match_pattern(&input_line, &pattern) {
+    let regex = Regex::new(&pattern).unwrap();
+    if regex.matches(&input_line) {
         process::exit(0)
     } else {
         process::exit(1)
