@@ -24,6 +24,8 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
     let mut input_chars = sub_input.chars();
     let mut pattern_chars = pattern.chars();
 
+    let mut prev_pattern_char = '\0';
+
     while let Some(pattern_char) = pattern_chars.next() {
         match pattern_char {
             '^' => continue,
@@ -33,7 +35,27 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
                     return Some(false);
                 }
             }
-            
+
+            '+' => {
+                while let Some(input_char) = input_chars.next() {
+                    if input_char != prev_pattern_char {
+                        while let Some(next_pattern_char) = pattern_chars.next() {
+                            if next_pattern_char == prev_pattern_char {
+                                continue;
+                            }
+
+                            if input_char != next_pattern_char {
+                                return Some(false);
+                            }
+
+                            break;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
             '\\' => match pattern_chars.next()? {
                 'd' => {
                     if !is_char_digit(input_chars.next()?) {
@@ -79,6 +101,8 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
                 }
             }
         }
+
+        prev_pattern_char = pattern_char;
     }
 
     Some(true)
@@ -177,5 +201,15 @@ mod tests {
     #[test]
     fn single_digit_matches_3() {
         assert!(match_pattern("abc 1", "\\d"))
+    }
+
+    #[test]
+    fn one_or_more_quantifier_1() {
+        assert!(match_pattern("cat", "ca+t"))
+    }
+
+    #[test]
+    fn one_or_more_quantifier_2() {
+        assert!(match_pattern("caaats", "ca+at"))
     }
 }
