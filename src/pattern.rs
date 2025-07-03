@@ -28,6 +28,12 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
         match pattern_char {
             '^' => continue,
 
+            '$' => {
+                if input_chars.next().is_some() {
+                    return Some(false);
+                }
+            }
+            
             '\\' => match pattern_chars.next()? {
                 'd' => {
                     if !is_char_digit(input_chars.next()?) {
