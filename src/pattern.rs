@@ -21,14 +21,15 @@ pub fn match_pattern(input_line: &str, pattern: &str) -> bool {
 }
 
 fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool> {
-    let mut input_chars = sub_input.chars();
-    let mut pattern_chars = pattern.chars();
+    let mut input_chars = sub_input.chars().peekable();
+    let mut pattern_chars = pattern.chars().peekable();
 
+    let mut prev_input_char = '\0';
     let mut prev_pattern_char = '\0';
 
     while let Some(pattern_char) = pattern_chars.next() {
         match pattern_char {
-            '^' => continue,
+            '^' | '?' => continue,
 
             '$' => {
                 if input_chars.next().is_some() {
@@ -96,7 +97,17 @@ fn pattern_matches_for_substring(sub_input: &str, pattern: &str) -> Option<bool>
             }
 
             literal_char => {
-                if input_chars.next()? != literal_char {
+                match pattern_chars.peek() {
+                    Some('?') => {
+                        if input_chars.peek().is_some() {
+                            prev_input_char = input_chars.next().unwrap();
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+
+                if input_chars.next().unwrap_or(prev_input_char) != literal_char {
                     return Some(false);
                 }
             }
@@ -211,5 +222,26 @@ mod tests {
     #[test]
     fn one_or_more_quantifier_2() {
         assert!(match_pattern("caaats", "ca+at"))
+    }
+
+    #[test]
+    fn zero_or_one_quantifier_matches_1() {
+        assert!(match_pattern("dogs", "dogs?"));
+        assert!(match_pattern("dog", "dogs?"));
+    }
+
+    #[test]
+    fn zero_or_one_quantifier_matches_2() {
+        assert!(match_pattern("cat", "ca?t"));
+    }
+
+    #[test]
+    fn zero_or_one_quantifier_matches_3() {
+        assert!(match_pattern("act", "ca?t"));
+    }
+
+    #[test]
+    fn zero_or_one_quantifier_doesnt_match() {
+        assert!(!match_pattern("cat", "dogs?"));
     }
 }
