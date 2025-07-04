@@ -20,6 +20,38 @@ impl Regex {
         })
     }
 
+    pub fn matches(&self, input: &str) -> bool {
+        let start_indexes = self.find_start_indexes(input);
+
+        for index in start_indexes {
+            let input_chars = &mut input[index..].chars().peekable();
+            let mut patterns = self.patterns.iter().peekable();
+            let mut pattern_matches = true;
+
+            while let Some(pattern) = patterns.next() {
+                let mut next_pattern: Option<&Pattern> = None;
+
+                match pattern {
+                    OneOrMoreQuantifier(_) => {
+                        next_pattern = patterns.peek().map(|&val| val);
+                    }
+                    _ => {}
+                }
+
+                if !pattern.matches(input_chars, next_pattern) {
+                    pattern_matches = false;
+                    break;
+                }
+            }
+
+            if pattern_matches {
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn parse_pattern(pattern: &mut Chars) -> Result<VecDeque<Pattern>, RegexError> {
         let mut result = VecDeque::new();
 
@@ -42,6 +74,7 @@ impl Regex {
                 '\\' => match pattern.next().ok_or(InvalidCharClass)? {
                     'w' => result.push_back(AlphanumericClass),
                     'd' => result.push_back(DigitClass),
+                    '\\' => result.push_back(CharLiteral('\\')),
                     _ => return Err(InvalidCharClass),
                 },
 
@@ -125,36 +158,22 @@ impl Regex {
 
         let first_pattern = self.patterns.front().unwrap();
 
-        for (i, _) in input.chars().enumerate() {
-            let input_sub_range = &mut input[i..].chars().peekable();
-            if first_pattern.matches(input_sub_range) {
-                result.push(i);
-            }
+        match first_pattern {
+            StartOfString(_) => { result.push(0); }
+            _ => {
+                for (i, _) in input.char_indices() {
+                    let input_sub_range = &mut input[i..].chars().peekable();
+                    if first_pattern.matches(input_sub_range, None) {
+                        result.push(i);
+                    }
+                }
+            },
         }
 
         result
     }
-
-    pub fn matches(&self, input: &str) -> bool {
-        let start_indexes = self.find_start_indexes(input);
-
-        for index in start_indexes {
-            let input_chars = &mut input[index..].chars().peekable();
-
-            if self
-                .patterns
-                .iter()
-                .all(|pattern| pattern.matches(input_chars))
-            {
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
-// TODO: move to separate integrations test 
 #[cfg(test)]
 mod matches_tests {
     use crate::regex::regex::Regex;
@@ -328,9 +347,15 @@ mod matches_tests {
     }
 
     #[test]
-    fn start_of_string_doesnt_match() {
+    fn start_of_string_doesnt_match_1() {
         let regex = Regex::new("^log").unwrap();
         assert!(!regex.matches("lAgging "))
+    }
+
+    #[test]
+    fn start_of_string_doesnt_match_2() {
+        let regex = Regex::new("^log").unwrap();
+        assert!(!regex.matches("slog"))
     }
 
     #[test]
@@ -346,9 +371,21 @@ mod matches_tests {
     }
 
     #[test]
-    fn one_or_more_matches() {
+    fn one_or_more_matches_1() {
         let regex = Regex::new("a+").unwrap();
         assert!(regex.matches("aaaaaaaaaabb"))
+    }
+
+    #[test]
+    fn one_or_more_matches_2() {
+        let regex = Regex::new("ca+t").unwrap();
+        assert!(regex.matches("cat"))
+    }
+
+    #[test]
+    fn one_or_more_matches_3() {
+        let regex = Regex::new("ca+at").unwrap();
+        assert!(regex.matches("caaats"))
     }
 
     #[test]
@@ -429,6 +466,29 @@ mod matches_tests {
         assert!(!regex.matches("horse"))
     }
 
+    #[test]
+    fn single_alternation_with_four_options_and_literal_match_1() {
+        let regex = Regex::new("(cat|dog|bird|lion) hello").unwrap();
+        assert!(regex.matches("bird hello"))
+    }
+
+    #[test]
+    fn single_alternation_with_four_options_and_literal_match_2() {
+        let regex = Regex::new("hello (cat|dog|bird|lion) bye").unwrap();
+        assert!(regex.matches("hello dog bye"))
+    }
+
+    #[test]
+    fn alternation_stage_1() {
+        let regex = Regex::new("^I see (\\d (cat|dog|cow)s?(, | and )?)+$").unwrap();
+        assert!(regex.matches("I see 1 cat, 2 dogs and 3 cows"))
+    }
+
+    #[test]
+    fn unicode_matches_1() {
+        let regex = Regex::new("g.+gol").unwrap();
+        assert!(regex.matches("goøö0Ogol"))
+    }
 }
 
 #[cfg(test)]
@@ -834,8 +894,18 @@ mod parsing_tests {
             let mut word_vec = Vec::new();
             word_vec.push(vec![CharLiteral('c'), CharLiteral('a'), CharLiteral('t')]);
             word_vec.push(vec![CharLiteral('d'), CharLiteral('o'), CharLiteral('g')]);
-            word_vec.push(vec![CharLiteral('b'), CharLiteral('i'), CharLiteral('r'), CharLiteral('d')]);
-            word_vec.push(vec![CharLiteral('l'), CharLiteral('i'), CharLiteral('o'), CharLiteral('n')]);
+            word_vec.push(vec![
+                CharLiteral('b'),
+                CharLiteral('i'),
+                CharLiteral('r'),
+                CharLiteral('d'),
+            ]);
+            word_vec.push(vec![
+                CharLiteral('l'),
+                CharLiteral('i'),
+                CharLiteral('o'),
+                CharLiteral('n'),
+            ]);
 
             Alternation(word_vec)
         });

@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::collections::VecDeque;
 use std::iter::Peekable;
 use std::str::Chars;
@@ -9,7 +10,7 @@ const ASCII_UPPERCASE_Z: u8 = 90;
 const ASCII_LOWERCASE_A: u8 = 97;
 const ASCII_LOWERCASE_Z: u8 = 122;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Pattern {
     CharLiteral(char),
     DigitClass,
@@ -26,7 +27,7 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    pub fn matches(&self, input: &mut Peekable<Chars>) -> bool {
+    pub fn matches(&self, input: &mut Peekable<Chars>, next_pattern: Option<&Pattern>) -> bool {
         match self {
             Pattern::CharLiteral(char) => input.next().is_some_and(|next_char| *char == next_char),
 
@@ -46,28 +47,60 @@ impl Pattern {
                 .next()
                 .is_some_and(|next_char| !char_group.contains(&next_char)),
 
-            Pattern::StartOfString(start_pattern) => start_pattern.matches(input),
+            Pattern::StartOfString(start_pattern) => start_pattern.matches(input, None),
 
             Pattern::EndOfString(end_pattern) => {
-                end_pattern.matches(input) && input.next().is_none()
+                end_pattern.matches(input, None) && input.next().is_none()
             }
 
-            Pattern::OneOrMoreQuantifier(quantifier) => {
-                if !quantifier.matches(input) {
+            Pattern::OneOrMoreQuantifier(current_pattern) => {
+                if !current_pattern.matches(input, None) {
                     return false;
                 }
 
-                while quantifier.matches(input) {}
+                match next_pattern {
+                    // Advance input iterator
+                    None => while current_pattern.matches(input, None) {},
+
+                    Some(nxt_pattern) => {
+                        let input_clone = &mut input.clone();
+                        let mut to_advance = 0;
+
+                        if **current_pattern == *nxt_pattern {
+                            while input_clone.peek().is_some()
+                                && current_pattern.matches(input_clone, None)
+                            {
+                                to_advance += 1;
+                            }
+                            to_advance -= 1;
+                        } else {
+                            while input_clone.peek().is_some()
+                                && !nxt_pattern.matches(input_clone, None)
+                            {
+                                to_advance += 1;
+                            }
+                        }
+
+                        for _ in 0..to_advance {
+                            input.next();
+                        }
+                    }
+                }
+
                 true
             }
 
             Pattern::OptionalQuantifier(optional_pattern) => {
-                match input.peek() {
-                    None => {}
-                    Some(next_char) => {
-                        let next_char_string = next_char.to_string();
-                        if optional_pattern.matches(&mut next_char_string.chars().peekable()) {
-                            input.next();
+                let next_char = input.peek();
+                if next_char.is_some() {
+                    match **optional_pattern {
+                        Pattern::CharLiteral(char_literal) => {
+                            if char_literal == *next_char.unwrap() {
+                                input.next();
+                            }
+                        }
+                        _ => {
+                            optional_pattern.matches(input, None);
                         }
                     }
                 }
@@ -77,13 +110,21 @@ impl Pattern {
 
             Pattern::Wildcard => input.next().is_some(),
 
-            Pattern::Group(group) => group.iter().all(|pattern| pattern.matches(input)),
+            Pattern::Group(group) => group.iter().all(|pattern| pattern.matches(input, None)),
 
             Pattern::Alternation(alternation) => {
                 for variant in alternation {
                     let input_clone = &mut input.clone();
+                    let variant_length = variant.len();
 
-                    if variant.iter().all(|pattern| pattern.matches(input_clone)) {
+                    if variant
+                        .iter()
+                        .all(|pattern| pattern.matches(input_clone, None))
+                    {
+                        for _ in 0..variant_length {
+                            input.next();
+                        }
+
                         return true;
                     }
                 }
