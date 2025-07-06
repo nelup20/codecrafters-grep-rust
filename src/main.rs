@@ -1,9 +1,8 @@
-mod regex;
 
-use crate::regex::regex::Regex;
 use std::env;
 use std::io;
 use std::process;
+use codecrafters_grep::Regex;
 
 fn main() {
     if env::args().nth(1).unwrap() != "-E" {
