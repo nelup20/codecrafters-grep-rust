@@ -47,14 +47,14 @@ impl Pattern {
                 .next()
                 .is_some_and(|next_char| !char_group.contains(&next_char)),
 
-            Pattern::StartOfString(start_pattern) => start_pattern.matches(input, None),
+            Pattern::StartOfString(start_pattern) => start_pattern.matches(input, next_pattern),
 
             Pattern::EndOfString(end_pattern) => {
-                end_pattern.matches(input, None) && input.next().is_none()
+                end_pattern.matches(input, next_pattern) && input.next().is_none()
             }
 
             Pattern::OneOrMoreQuantifier(current_pattern) => {
-                if !current_pattern.matches(input, None) {
+                if !current_pattern.matches(input, next_pattern) {
                     return false;
                 }
 
@@ -110,7 +110,30 @@ impl Pattern {
 
             Pattern::Wildcard => input.next().is_some(),
 
-            Pattern::Group(group) => group.iter().all(|pattern| pattern.matches(input, None)),
+            Pattern::Group(group) => {
+                let mut nxt_pattern: Option<&Pattern> = None;
+                let mut group_patterns = group.iter().enumerate().peekable();
+
+                while let Some((i, pattern)) = group_patterns.next() {
+                    match pattern {
+                        Pattern::OneOrMoreQuantifier(_) => {
+                            if i == group.len() - 1 {
+                                nxt_pattern = next_pattern;
+                            } else {
+                                let (_, next_group_pattern) = group_patterns.peek().unwrap();
+                                nxt_pattern = Some(next_group_pattern);
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    if !pattern.matches(input, nxt_pattern) {
+                        return false;
+                    }
+                }
+
+                true
+            }
 
             Pattern::Alternation(alternation) => {
                 for variant in alternation {

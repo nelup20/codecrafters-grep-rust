@@ -29,14 +29,7 @@ impl Regex {
             let mut pattern_matches = true;
 
             while let Some(pattern) = patterns.next() {
-                let mut next_pattern: Option<&Pattern> = None;
-
-                match pattern {
-                    OneOrMoreQuantifier(_) => {
-                        next_pattern = patterns.peek().map(|&val| val);
-                    }
-                    _ => {}
-                }
+                let next_pattern: Option<&Pattern> = patterns.peek().map(|&val| val);
 
                 if !pattern.matches(input_chars, next_pattern) {
                     pattern_matches = false;
@@ -54,12 +47,12 @@ impl Regex {
 
     fn parse_pattern(pattern: &mut Chars) -> Result<VecDeque<Pattern>, RegexError> {
         let mut result = VecDeque::new();
+        let mut pattern_starts_with = false;
 
         while let Some(current_char) = pattern.next() {
             match current_char {
                 '^' => {
-                    let next_char = pattern.next().ok_or(InvalidStart)?;
-                    result.push_back(StartOfString(Box::new(CharLiteral(next_char))))
+                    pattern_starts_with = true;
                 }
 
                 '$' => {
@@ -75,6 +68,14 @@ impl Regex {
                     'w' => result.push_back(AlphanumericClass),
                     'd' => result.push_back(DigitClass),
                     '\\' => result.push_back(CharLiteral('\\')),
+                    '1' => {
+                        let first_group = result.iter().find(|pattern| match pattern {
+                            Group(_) => { true },
+                            _ => { false }
+                        }).ok_or(InvalidBackreference)?;
+
+                        result.push_back(first_group.clone());
+                    },
                     _ => return Err(InvalidCharClass),
                 },
 
@@ -148,6 +149,11 @@ impl Regex {
                     result.push_back(CharLiteral(current_char));
                 }
             }
+        }
+
+        if pattern_starts_with {
+            let first_pattern = result.pop_front().unwrap();
+            result.push_front(StartOfString(Box::new(first_pattern)))
         }
 
         Ok(result)
@@ -488,6 +494,24 @@ mod matches_tests {
     fn unicode_matches_1() {
         let regex = Regex::new("g.+gol").unwrap();
         assert!(regex.matches("goøö0Ogol"))
+    }
+
+    #[test]
+    fn backreference_matches_1() {
+        let regex = Regex::new("([abcd]+) is \\1, not [^xyz]+").unwrap();
+        assert!(regex.matches("abcd is abcd, not efg"))
+    }
+
+    #[test]
+    fn backreference_matches_2() {
+        let regex = Regex::new("^(\\w+) starts and ends with \\1$").unwrap();
+        assert!(regex.matches("this starts and ends with this"))
+    }
+
+    #[test]
+    fn backreference_matches_3() {
+        let regex = Regex::new("once a (drea+mer), alwaysz? a \\1").unwrap();
+        assert!(regex.matches("once a dreaaamer, always a dreaaamer"))
     }
 }
 

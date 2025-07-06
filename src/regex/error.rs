@@ -8,4 +8,5 @@ pub enum RegexError {
     InvalidCharGroup,
     InvalidOptionalQuantifier,
     InvalidOneOrMoreQuantifier,
+    InvalidBackreference
 }
