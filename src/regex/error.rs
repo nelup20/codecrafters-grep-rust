@@ -1,11 +1,10 @@
 
 #[derive(Debug)]
-pub enum RegexError {
+pub enum RegexParsingError {
     EmptyRegex,
     InvalidCharClass,
     InvalidStart,
     InvalidEnd,
-    InvalidCharGroup,
     InvalidOptionalQuantifier,
     InvalidOneOrMoreQuantifier,
     InvalidBackreference

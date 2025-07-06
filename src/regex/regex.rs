@@ -1,22 +1,23 @@
-use crate::regex::error::RegexError;
-use crate::regex::error::RegexError::*;
+use crate::regex::error::RegexParsingError;
+use crate::regex::error::RegexParsingError::*;
 use crate::regex::pattern::Pattern;
 use crate::regex::pattern::Pattern::*;
 use std::collections::VecDeque;
+use std::iter::Peekable;
 use std::str::Chars;
 
 pub struct Regex {
-    pub patterns: VecDeque<Pattern>,
+    patterns: VecDeque<Pattern>,
 }
 
 impl Regex {
-    pub fn new(pattern: &str) -> Result<Self, RegexError> {
+    pub fn new(pattern: &str) -> Result<Self, RegexParsingError> {
         if pattern.is_empty() {
             return Err(EmptyRegex);
         }
 
         Ok(Self {
-            patterns: Self::parse_pattern(&mut pattern.chars())?,
+            patterns: Self::parse_pattern(&mut pattern.chars().peekable())?,
         })
     }
 
@@ -24,21 +25,22 @@ impl Regex {
         let start_indexes = self.find_start_indexes(input);
 
         for index in start_indexes {
+            let mut matches_at_index = true;
+
             let input_chars = &mut input[index..].chars().enumerate().peekable();
             let mut patterns = self.patterns.iter().peekable();
-            let mut pattern_matches = true;
             let mut backreference_values: Vec<String> = Vec::new();
 
             while let Some(pattern) = patterns.next() {
                 let next_pattern: Option<&Pattern> = patterns.peek().map(|&val| val);
 
                 if !pattern.matches(input_chars, next_pattern, &mut backreference_values) {
-                    pattern_matches = false;
+                    matches_at_index = false;
                     break;
                 }
             }
 
-            if pattern_matches {
+            if matches_at_index {
                 return true;
             }
         }
@@ -46,7 +48,9 @@ impl Regex {
         false
     }
 
-    fn parse_pattern(pattern: &mut Chars) -> Result<VecDeque<Pattern>, RegexError> {
+    fn parse_pattern(
+        pattern: &mut Peekable<Chars>,
+    ) -> Result<VecDeque<Pattern>, RegexParsingError> {
         let mut result = VecDeque::new();
         let mut pattern_starts_with = false;
 
@@ -54,6 +58,9 @@ impl Regex {
             match current_char {
                 '^' => {
                     pattern_starts_with = true;
+                    if pattern.peek().is_none() {
+                        return Err(InvalidStart);
+                    }
                 }
 
                 '$' => {
@@ -70,19 +77,17 @@ impl Regex {
                     'd' => result.push_back(DigitClass),
                     '\\' => result.push_back(CharLiteral('\\')),
                     number => result.push_back(Backreference(
-                        number.to_digit(10).ok_or(InvalidCharClass)? as usize,
+                        number.to_digit(10).ok_or(InvalidBackreference)? as usize,
                     )),
                 },
 
                 '?' => {
                     let previous_pattern = result.pop_back().ok_or(InvalidOptionalQuantifier)?;
-
                     result.push_back(OptionalQuantifier(Box::new(previous_pattern)))
                 }
 
                 '+' => {
                     let previous_pattern = result.pop_back().ok_or(InvalidOneOrMoreQuantifier)?;
-
                     result.push_back(OneOrMoreQuantifier(Box::new(previous_pattern)))
                 }
 
@@ -164,6 +169,7 @@ impl Regex {
                 result.push(0);
             }
             _ => {
+                // .char_indices() for non-ASCII bytes
                 for (i, _) in input.char_indices() {
                     let input_sub_range = &mut input[i..].chars().enumerate().peekable();
                     if first_pattern.matches(input_sub_range, None, &mut vec![]) {

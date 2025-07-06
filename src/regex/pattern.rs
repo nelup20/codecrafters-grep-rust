@@ -85,6 +85,7 @@ impl Pattern {
                             }
                             to_advance -= 1;
                         } else {
+                            // Check next pattern instead of current in case current is Wildcard (".")
                             while input_clone.peek().is_some()
                                 && !nxt_pattern.matches(input_clone, None, backreference_values)
                             {
@@ -123,7 +124,8 @@ impl Pattern {
 
             Pattern::Group(group) => {
                 // For backreferences:
-                // save input, index and length before advancing the group and add new backref value
+                // save input, index and length before advancing/matching the group
+                // and add placeholder backref value
                 let mut input_clone = input.clone();
                 let (input_index_before, _) = input_clone.peek().unwrap_or_else(|| &(0usize, '\0'));
                 let backreferences_length = backreference_values.len();
