@@ -516,6 +516,18 @@ mod matches_tests {
         let regex = Regex::new("(\\d+) (\\w+) squares and \\1 \\2 circles").unwrap();
         assert!(!regex.matches("3 red squares and 4 red circles"))
     }
+
+    #[test]
+    fn nested_backreferences_match_1() {
+        let regex = Regex::new("('(cat) and \\2') is the same as \\1").unwrap();
+        assert!(regex.matches("'cat and cat' is the same as 'cat and cat'"))
+    }
+
+    #[test]
+    fn nested_backreferences_match_2() {
+        let regex = Regex::new("(([abc]+)-([def]+)) is \\1, not ([^xyz]+), \\2, or \\3").unwrap();
+        assert!(regex.matches("abc-def is abc-def, not efg, abc, or def"))
+    }
 }
 
 #[cfg(test)]

@@ -122,41 +122,40 @@ impl Pattern {
             Pattern::Wildcard => input.next().is_some(),
 
             Pattern::Group(group) => {
-                // For backreferences: save input and index before advancing the group
+                // For backreferences:
+                // save input, index and length before advancing the group and add new backref value
                 let mut input_clone = input.clone();
                 let (input_index_before, _) = input_clone.peek().unwrap_or_else(|| &(0usize, '\0'));
-                let mut group_backreference = String::new();
+                let backreferences_length = backreference_values.len();
+                backreference_values.push(String::new());
 
-                let mut nxt_pattern: Option<&Pattern> = None;
                 let mut group_patterns = group.iter().enumerate().peekable();
+                let mut next_group_pattern: Option<&Pattern> = None;
 
-                while let Some((i, pattern)) = group_patterns.next() {
-                    match pattern {
-                        Pattern::OneOrMoreQuantifier(_) => {
-                            // + is the last pattern in the group, so we need the pattern outside the group
-                            if i == group.len() - 1 {
-                                nxt_pattern = next_pattern;
-                            } else {
-                                let (_, next_group_pattern) = group_patterns.peek().unwrap();
-                                nxt_pattern = Some(next_group_pattern);
-                            }
-                        }
-                        _ => {}
+                while let Some((i, group_pattern)) = group_patterns.next() {
+                    // No more patterns left, so we need the pattern outside the group
+                    if i == group.len() - 1 {
+                        next_group_pattern = next_pattern;
+                    } else {
+                        next_group_pattern = Some(group_patterns.peek().unwrap().1);
                     }
 
-                    if !pattern.matches(input, nxt_pattern, backreference_values) {
+                    if !group_pattern.matches(input, next_group_pattern, backreference_values) {
                         return false;
                     }
                 }
 
                 // Capture the group's matched value
                 if let Some((input_index_after, _)) = input.peek() {
+                    let mut group_backreference = String::new();
+
                     for _ in 0..(*input_index_after - *input_index_before) {
                         group_backreference.push(input_clone.next().unwrap().1);
                     }
-                }
 
-                backreference_values.push(group_backreference);
+                    backreference_values.remove(backreferences_length);
+                    backreference_values.insert(backreferences_length, group_backreference);
+                }
 
                 true
             }
