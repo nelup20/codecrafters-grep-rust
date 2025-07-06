@@ -1,3 +1,6 @@
+Completed extensions:
+- Backreferences
+
 [![progress-banner](https://backend.codecrafters.io/progress/grep/a36766bb-f3ff-491e-a5be-88d0b5d8c424)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
 This is a starting point for Rust solutions to the
