@@ -24,14 +24,15 @@ impl Regex {
         let start_indexes = self.find_start_indexes(input);
 
         for index in start_indexes {
-            let input_chars = &mut input[index..].chars().peekable();
+            let input_chars = &mut input[index..].chars().enumerate().peekable();
             let mut patterns = self.patterns.iter().peekable();
             let mut pattern_matches = true;
+            let mut backreference_values: Vec<String> = Vec::new();
 
             while let Some(pattern) = patterns.next() {
                 let next_pattern: Option<&Pattern> = patterns.peek().map(|&val| val);
 
-                if !pattern.matches(input_chars, next_pattern) {
+                if !pattern.matches(input_chars, next_pattern, &mut backreference_values) {
                     pattern_matches = false;
                     break;
                 }
@@ -68,15 +69,9 @@ impl Regex {
                     'w' => result.push_back(AlphanumericClass),
                     'd' => result.push_back(DigitClass),
                     '\\' => result.push_back(CharLiteral('\\')),
-                    '1' => {
-                        let first_group = result.iter().find(|pattern| match pattern {
-                            Group(_) => { true },
-                            _ => { false }
-                        }).ok_or(InvalidBackreference)?;
-
-                        result.push_back(first_group.clone());
-                    },
-                    _ => return Err(InvalidCharClass),
+                    number => result.push_back(Backreference(
+                        number.to_digit(10).ok_or(InvalidCharClass)? as usize,
+                    )),
                 },
 
                 '?' => {
@@ -165,15 +160,17 @@ impl Regex {
         let first_pattern = self.patterns.front().unwrap();
 
         match first_pattern {
-            StartOfString(_) => { result.push(0); }
+            StartOfString(_) => {
+                result.push(0);
+            }
             _ => {
                 for (i, _) in input.char_indices() {
-                    let input_sub_range = &mut input[i..].chars().peekable();
-                    if first_pattern.matches(input_sub_range, None) {
+                    let input_sub_range = &mut input[i..].chars().enumerate().peekable();
+                    if first_pattern.matches(input_sub_range, None, &mut vec![]) {
                         result.push(i);
                     }
                 }
-            },
+            }
         }
 
         result
@@ -512,6 +509,12 @@ mod matches_tests {
     fn backreference_matches_3() {
         let regex = Regex::new("once a (drea+mer), alwaysz? a \\1").unwrap();
         assert!(regex.matches("once a dreaaamer, always a dreaaamer"))
+    }
+
+    #[test]
+    fn multiple_backreferences_dont_match_1() {
+        let regex = Regex::new("(\\d+) (\\w+) squares and \\1 \\2 circles").unwrap();
+        assert!(!regex.matches("3 red squares and 4 red circles"))
     }
 }
 

@@ -1,6 +1,6 @@
 use std::cmp::PartialEq;
 use std::collections::VecDeque;
-use std::iter::Peekable;
+use std::iter::{Enumerate, Peekable};
 use std::str::Chars;
 
 const ASCII_0: u8 = 48;
@@ -24,43 +24,54 @@ pub enum Pattern {
     Wildcard,
     Group(VecDeque<Pattern>),
     Alternation(Vec<Vec<Pattern>>),
+    Backreference(usize),
 }
 
 impl Pattern {
-    pub fn matches(&self, input: &mut Peekable<Chars>, next_pattern: Option<&Pattern>) -> bool {
+    pub fn matches(
+        &self,
+        input: &mut Peekable<Enumerate<Chars>>,
+        next_pattern: Option<&Pattern>,
+        backreference_values: &mut Vec<String>,
+    ) -> bool {
         match self {
-            Pattern::CharLiteral(char) => input.next().is_some_and(|next_char| *char == next_char),
+            Pattern::CharLiteral(char) => input
+                .next()
+                .is_some_and(|(_, next_char)| *char == next_char),
 
             Pattern::DigitClass => input
                 .next()
-                .is_some_and(|next_char| is_char_digit(next_char)),
+                .is_some_and(|(_, next_char)| is_char_digit(next_char)),
 
             Pattern::AlphanumericClass => input
                 .next()
-                .is_some_and(|next_char| is_char_alphanumeric(next_char)),
+                .is_some_and(|(_, next_char)| is_char_alphanumeric(next_char)),
 
             Pattern::PositiveCharGroup(char_group) => input
                 .next()
-                .is_some_and(|next_char| char_group.contains(&next_char)),
+                .is_some_and(|(_, next_char)| char_group.contains(&next_char)),
 
             Pattern::NegativeCharGroup(char_group) => input
                 .next()
-                .is_some_and(|next_char| !char_group.contains(&next_char)),
+                .is_some_and(|(_, next_char)| !char_group.contains(&next_char)),
 
-            Pattern::StartOfString(start_pattern) => start_pattern.matches(input, next_pattern),
+            Pattern::StartOfString(start_pattern) => {
+                start_pattern.matches(input, next_pattern, backreference_values)
+            }
 
             Pattern::EndOfString(end_pattern) => {
-                end_pattern.matches(input, next_pattern) && input.next().is_none()
+                end_pattern.matches(input, next_pattern, backreference_values)
+                    && input.next().is_none()
             }
 
             Pattern::OneOrMoreQuantifier(current_pattern) => {
-                if !current_pattern.matches(input, next_pattern) {
+                if !current_pattern.matches(input, next_pattern, backreference_values) {
                     return false;
                 }
 
                 match next_pattern {
                     // Advance input iterator
-                    None => while current_pattern.matches(input, None) {},
+                    None => while current_pattern.matches(input, None, backreference_values) {},
 
                     Some(nxt_pattern) => {
                         let input_clone = &mut input.clone();
@@ -68,14 +79,14 @@ impl Pattern {
 
                         if **current_pattern == *nxt_pattern {
                             while input_clone.peek().is_some()
-                                && current_pattern.matches(input_clone, None)
+                                && current_pattern.matches(input_clone, None, backreference_values)
                             {
                                 to_advance += 1;
                             }
                             to_advance -= 1;
                         } else {
                             while input_clone.peek().is_some()
-                                && !nxt_pattern.matches(input_clone, None)
+                                && !nxt_pattern.matches(input_clone, None, backreference_values)
                             {
                                 to_advance += 1;
                             }
@@ -95,12 +106,12 @@ impl Pattern {
                 if next_char.is_some() {
                     match **optional_pattern {
                         Pattern::CharLiteral(char_literal) => {
-                            if char_literal == *next_char.unwrap() {
+                            if char_literal == next_char.unwrap().1 {
                                 input.next();
                             }
                         }
                         _ => {
-                            optional_pattern.matches(input, None);
+                            optional_pattern.matches(input, None, backreference_values);
                         }
                     }
                 }
@@ -111,12 +122,18 @@ impl Pattern {
             Pattern::Wildcard => input.next().is_some(),
 
             Pattern::Group(group) => {
+                // For backreferences: save input and index before advancing the group
+                let mut input_clone = input.clone();
+                let (input_index_before, _) = input_clone.peek().unwrap_or_else(|| &(0usize, '\0'));
+                let mut group_backreference = String::new();
+
                 let mut nxt_pattern: Option<&Pattern> = None;
                 let mut group_patterns = group.iter().enumerate().peekable();
 
                 while let Some((i, pattern)) = group_patterns.next() {
                     match pattern {
                         Pattern::OneOrMoreQuantifier(_) => {
+                            // + is the last pattern in the group, so we need the pattern outside the group
                             if i == group.len() - 1 {
                                 nxt_pattern = next_pattern;
                             } else {
@@ -127,10 +144,19 @@ impl Pattern {
                         _ => {}
                     }
 
-                    if !pattern.matches(input, nxt_pattern) {
+                    if !pattern.matches(input, nxt_pattern, backreference_values) {
                         return false;
                     }
                 }
+
+                // Capture the group's matched value
+                if let Some((input_index_after, _)) = input.peek() {
+                    for _ in 0..(*input_index_after - *input_index_before) {
+                        group_backreference.push(input_clone.next().unwrap().1);
+                    }
+                }
+
+                backreference_values.push(group_backreference);
 
                 true
             }
@@ -142,7 +168,7 @@ impl Pattern {
 
                     if variant
                         .iter()
-                        .all(|pattern| pattern.matches(input_clone, None))
+                        .all(|pattern| pattern.matches(input_clone, None, backreference_values))
                     {
                         for _ in 0..variant_length {
                             input.next();
@@ -153,6 +179,21 @@ impl Pattern {
                 }
 
                 false
+            }
+
+            Pattern::Backreference(nth) => {
+                let backreference = backreference_values.get(nth - 1).unwrap();
+
+                for backreference_char in backreference.chars() {
+                    if input
+                        .next()
+                        .is_none_or(|(_, input_char)| input_char != backreference_char)
+                    {
+                        return false;
+                    }
+                }
+
+                true
             }
         }
     }
